@@ -1,0 +1,353 @@
+---
+title: "Association between temperature, vaccine rate and COVID-19 cases"
+author: "Yingzi"
+date: "2022/3/12"
+output: html_document
+---
+# Abstract
+
+This project focuses on creating an appropriate curvilinear regression model for COVID-19 daily cases number based on temperature, fully vaccinated rate, and time effect. Due to strong fluctuating time effect, sine function was used to fit this effect. Logarithmic transformation was applied to response variable to satisfy the assumption of normal distribution. Sensitivity was conducted for validation of the model. Finally we got the relationship of response variable and explanatory variables. 
+
+# Introduction
+
+COVID-19 is a widespread global pandemic caused by SARS-CoV-2 coronavirus causing significant socio-economic impact. Previous studies show that cold and dry weather may positively influence coronavirus survival time and the transmission rate of upper respiratory tract coronavirus infections[1]. Our experience also tells us that it seems like the outbreak always takes place in winter. COVID-19 vaccines are a critical prevention tool. I also want to know if the infection cases decline because of vaccine effectiveness. Based on my questions of interest, I want to find the regression to describe this association.
+
+# Method
+
+## Data Source
+
+The research data is daily data from 01/22/2020 to 02/28/2022 from six states in the US. They are California State, Florida State, Illinois State, Texas State, Washington state, and New York State. Compared to country data, state data is easier to collect temperature data. Besides that, using state data could avoid some effects which are not in the model like political reasons, medical resource, vaccine types, etc. It also helps to avoid endogenous.
+
+The infection variable I chose seven-day moving average of new cases. Moving average number could reduce the effect caused by weekday and weekend circle. The data is from Centers of Disease Control and Prevention (CDC) of United States.
+
+The temperature variable I chose average temperature of each states. The data is from visualcrossing.com. Visual Crossing is a provider of weather data. They collect data from weather observations.
+
+The vaccine variable I chose fully vaccinated rate. The data also comes from CDC. CDC counts people as being “fully vaccinated” if they received two doses on different days (regardless of time interval) of the two-dose mRNA series or received one dose of a single-dose vaccine.[2]
+
+## Exploratory Data Analysis
+
+In this project, the dataset with 5 variables will be used. This part I will conduct the exploratory analysis of these variables.
+
+**state**
+
+We can take a look at the geographical distribution of these states.
+
+![Geographical Distribution](state_map.PNG)
+
+In order to include as many climate types as possible, I chose the northern, southern, eastern, and western states.
+
+To validate my choice, scatter line and boxplot of temperature could help.
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+
+data1<-read.csv('proj_data_2.csv',header = T)
+attach(data1)
+names(data1)<-c('state','date','cases','vaccine','temp','time')
+data1$state<-as.factor(data1$state)
+
+data2<-data1[which(data1$cases>0),]
+data2<-data2[,c(1,3,4,5,6)]
+
+```
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+library(ggplot2)
+ggplot(data1,mapping = aes(x=time,y=temp, color=state))+geom_point()+geom_line()
+```
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+ggplot(data1,mapping = aes(x=state,y=temp, color=state))+geom_boxplot()
+```
+
+From these two plot we can see that the temperature range of states are not very similar. Texas has the highest mean and range of temperature, and Washington has the lowest.
+
+**cases**
+
+The cases variable is seven-day moving average cases. We can see how it changes over time. 
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+library(ggplot2)
+ggplot(data1,mapping = aes(x=time,y=cases, color=state))+geom_point()+geom_line()
+
+```
+
+The plot shows that there are four distinct peaks. The last peak is obviously several times higher than the previous data. But in most of time, the number of cases are lower than 25,000. So the distribution of cases should be left-skewed distribution.
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+library(gridExtra)
+
+p1<-ggplot(data2[which(data2$state=='California'),],mapping = aes(x=cases))+geom_histogram()
+p2<-ggplot(data2[which(data2$state=='Florida'),],mapping = aes(x=cases))+geom_histogram()
+p3<-ggplot(data2[which(data2$state=='Illinois'),],mapping = aes(x=cases))+geom_histogram()
+p4<-ggplot(data2[which(data2$state=='Texas'),],mapping = aes(x=cases))+geom_histogram()
+p5<-ggplot(data2[which(data2$state=='Washington'),],mapping = aes(x=cases))+geom_histogram()
+p6<-ggplot(data2[which(data2$state=='New York'),],mapping = aes(x=cases))+geom_histogram()
+grid.arrange(p1, p2,p3,p4,p5,p6,nrow = 2) 
+```
+
+**vaccine**
+
+The vaccine variable is accumulated daily fully vaccinated rate. So it would increases over time.
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+data3<-data1[which(data1$vaccine>0),]
+ggplot(data3,mapping = aes(x=time,y=vaccine, color=state))+geom_point()+geom_line()
+```
+
+The increase speed of New York is highest, and Texas is lowest. The difference of highest vaccine rate and lowest vaccine rate is approximately 16%.
+
+**Pairwise plot**
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+library(GGally)
+ggpairs(data2)
+```
+
+The pairwise plot doesn't show much useful information. That would because the response variable and explanatory variables are not linear relationship.
+
+## Model
+
+### Logarithmic transformation
+
+Before building the model, we need to take logarithmic transformation of response variable. This transformation could reduce the skewness of original data.
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+library(gridExtra)
+p1<-ggplot(data2,mapping = aes(x=cases))+geom_histogram()
+p2<-ggplot(data2,mapping = aes(x=log(cases)))+geom_histogram()
+grid.arrange(p1,p2,nrow=1)
+```
+
+The transformed cases is kind of right-skewed distribution, but is much more normal than before.
+
+### Time wave process
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+ggplot(data2,mapping = aes(x=time,y=log(cases)))+geom_point()+geom_line()
+```
+
+From the log(cases) vs time plot we can find that there still exist six peaks. At here, we can see the accumulated spread effect of virus as a function of time. So we can say to some extent time causes regular fluctuations in cases number. In this situation, the time effect of response variable is not simple first-order or second order. This regular fluctuation is easy to associate with sine function for me. So I tried to use sine function time to fit this effect. 
+
+After preliminary function investigation, I decide a new variable 'time_wave'. The relationship between 'time_wave' and 'time' is $time\_wave=sin(2\pi(time-55)/122)$. The comparison graphic of log(cases) and time_wave is as follows.
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+time_wave<-sin(2*pi*(data2$time-55)/122)
+p1<-ggplot(data2,mapping = aes(x=time,y=log(cases)))+geom_point()+geom_line()
+p2<-ggplot(data2,mapping = aes(x=time,y=time_wave))+geom_point()+geom_line()
+grid.arrange(p1,p2,nrow=2)
+```
+
+The peaks and troughs of two plots can not match exactly but they have approximately consistent direction in most of time.
+
+### Regression model
+
+After preliminary model investigation and model selection, the final models are as follows.
+
+
+$California:log(cases)=6.7 -0.023temperature +0.853time\_wave -0.01vaccine +0.00001time^2+0.001temperature^2+0.0002vaccine^2-0.019temperature*time\_wave$
+
+
+
+$Florida:log(cases)=6,284 -0.023temperature +0.853time\_wave -0.01vaccine + 0.00001time^2+0.001temperature^2+0.0002vaccine^2-0.019temperature*time\_wave$
+
+
+
+$Illinois:log(cases)=5.929 -0.023temperature +0.853time\_wave -0.01vaccine + 0.00001time^2+0.001temperature^2+0.0002vaccine^2-0.019temperature*time\_wave$
+
+
+
+$New York:log(cases)=5.908 -0.023temperature +0.853time\_wave -0.01vaccine + 0.00001time^2+0.001temperature^2+0.0002vaccine^2-0.019temperature*time\_wave$
+
+
+
+$Texas:log(cases)=6.171 -0.023temperature +0.853time\_wave -0.01vaccine + 0.00001time^2+0.001temperature^2+0.0002vaccine^2-0.019temperature*time\_wave$
+
+
+
+$Washington:log(cases)=5.25 -0.023temperature +0.853time\_wave -0.01vaccine + 0.00001time^2+0.001temperature^2+0.0002vaccine^2-0.019temperature*time\_wave$
+
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE,results='hide'}
+fit15<-lm(formula = log(cases) ~ temp + time_wave + 
+            state + vaccine + I(time^2) + I(temp^2) + I(vaccine^2) + 
+            temp:time_wave , 
+          data = data2)
+summary(fit15)
+```
+
+All of coefficients are significant at the level of $p=0.001$. The adjusted R-squared is 0.521.
+
+From the coefficients of model we can get the temperature and vaccine are negative correlated with response variable. In addition, the model contains second-order terms of time, temperature and vaccine rate although the effects are very slight.  Now we can say in some ranges, higher temperature and higher vaccine rate could lead to decreasing of inflection cases. But this relationship is not linear. The effect of vaccine and temperature would not stay consistent.
+
+The anova table of the model is as follows.
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE,results='hide'}
+aov<-anova(fit15)
+aov
+```
+
++:-------------------:+:-----:+:---------:+:-------:+:-----:+
+| Source of Variation | Df    | SS        | F value | Pr(>F)|
++=====================+=======+===========+=========+=======+
+| temp                | 1     | 180.0     |156.055  | \*** |
++---------------------+-------+-----------+---------+-------+
+|time_wave            | 1     | 240.0     |208.000  | \***  |
++---------------------+-------+-----------+---------+-------+
+| state               | 5     | 2036.8    |353.103  |  \*** |
++---------------------+-------+-----------+---------+-------+
+| vaccine             | 1     | 851.4     |737.990  | \***  |
++---------------------+-------+-----------+---------+-------+
+|time^2               | 1     | 1990.0    | 1724.909| \***  |
++---------------------+-------+-----------+---------+-------+
+| temp^2              | 1     | 105.3     | 91.261  |  \*** |
++---------------------+-------+-----------+---------+-------+
+| vaccine^2           | 1     | 18.1      |15.668   |   \***|
++---------------------+-------+-----------+---------+-------+
+|temp\*time_wave      | 1     | 61.7      |  53.497 | \***  |
++---------------------+-------+-----------+---------+-------+
+| Residuals           | 4354  | 5023.1    |         |       |
++---------------------+-------+-----------+---------+-------+
+
+## Sensitivity Analysis
+
+The sensitivity analysis contains two part: residual analysis, and outlying and influential cases identify.
+
+### Residual analysis
+
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+plot(fit15, which = 1)
+```
+
+The residual vs fitted values plot shows no obviously nonlinearity and the points are approximately equally spread along the horizontal axis. So the model satisfies the linearity and equal variance assumptions.
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+plot(fit15, which = 2)
+```
+
+The second QQ plot is heavy-tailed distribution. Since response variable is also heavy-tailed distribution, the residual distribution can be accepted.
+
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+boxplot(fit15$residuals)
+```
+
+Residual boxplot shows range from -2 to 2. 
+
+### Influential points
+
+We use Cook's distance to measure the aggregate influence of the $i^{th}$ case on all n fitted values:$D_i := \frac{\sum_{j=1}^n (\hat{Y}_j-\hat{Y}_{j(i)})^2}{p \cdot MSE}$. If Cook's distance exceeding 1 we need to delete the point.
+
+The Cook's distance plot can be used to check that.
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+# cook's distance
+plot(fit15,which = 4)
+```
+
+None of the points' Cook's distance is over 1.
+
+
+# Causal Inference
+
+Causal inference is not applied in this research. The reasons are as following.
+
+1. If we want to apply causal inference in this research, the only variable can be seen as 'treatment' is vaccine. In this condition, if we want to calculate $ATE=E(Y_1(x)-Y_2(x))$ [3], we need to make sure the other variables stay the same. However, from the previous model we stated, the response variable has a accumulated, fluctuated effect of time.(That's caused by the spread of virus). So even if we can match the same state and same temperature, we can not match the same time effect.
+
+2. In this research, we can not satisfy the assumption $Z_i \perp \{Y_i(1), Y_i(0)\} | X_i$, which means the treatment(vaccination) is randomized[4]. But the assignment of vaccination is not random distributed. Taking or not vaccine is personal subjective choice. It would affected by personal background, political standing, healthy condition, and attitude to the COVID. It's very possible that people who taking the vaccine are very care about their health so even before vaccine comes out they would try to avoid inflection.
+
+# Discussion
+
+The above is the whole content of my research. Obviously there exists lots of problems. The largest problem is about the variables I didn't think about. The R-squared in my model is only 0.53, so current explanatory variables are not enough. The second  problem is about external validity. Since I chose six states as my research cases, the outcomes could not appropriate for other cases. 
+
+
+# Aknoledgement
+
+My teammates: Yichen Hu, Dongyi Qiu, and Xiuxiao Hughes.
+
+My friend: Chenyang Zhang
+
+207 TA: Zitong Zhang
+
+# Reference
+
+[1]Si, X., Bambrick, H., Zhang, Y., Cheng, J., McClymont, H., Bonsall, M., & Hu, W. (2021). Weather variability and transmissibility of COVID-19: A time series analysis based on effective reproductive number. Experimental Results, 2, E15. doi:10.1017/exp.2021.4
+
+[2]Rosenberg, E. S., Dorabawila, V., Easton, D., Bauer, U. E., Kumar, J., Hoen, R., Hoefer, D., Wu, M., Lutterloh, E., Conroy, M. B., Greene, D., & Zucker, H. A. (2021). Covid-19 Vaccine Effectiveness in New York State. New England Journal of Medicine. https://doi.org/10.1056/nejmoa2116063
+
+[3]Causal Inference - an overview | ScienceDirect Topics. (n.d.). Retrieved from www.sciencedirect.com website: https://www.sciencedirect.com/topics/social-sciences/causal-inference
+
+[4]Chen, S. (n.d.). Notebook on nbviewer. Jupyter Notebook Viewer. Retrieved March 1, 2022, from https://nbviewer.org/github/ChenShizhe/StatDataScience/blob/master/Notes/Chapter4ANOVA.ipynb
+# Appendix
+
+```{r,echo=FALSE,eval=FALSE,message=FALSE,warning=FALSE}
+data1<-read.csv('proj_data_2.csv',header = T)
+attach(data1)
+names(data1)<-c('state','date','cases','vaccine','temp','time')
+data1$state<-as.factor(data1$state)
+
+data2<-data1[which(data1$cases>0),]
+data2<-data2[,c(1,3,4,5,6)]
+plot(data2$time,log(data2$cases))
+
+
+par(mfrow=c(2,1))
+plot(data2$time, log(data2$cases))
+plot(data2$time, sin(2*pi*(data2$time-55)/122))
+
+fit15<-lm(formula = log(cases) ~ temp + sin(2 * pi * (data2$time - 55)/122) + 
+            state + vaccine + I(time^2) + I(temp^2) + I(vaccine^2) + 
+            temp:sin(2 * pi * (data2$time - 55)/122) , 
+          data = data2)
+summary(fit15)
+plot(fit15, which = 1:2)
+
+anova(fit15)
+
+# cook's distance
+plot(fit15,which = 4)
+plot(fit15,which = 5)
+
+# visualization
+
+library(ggplot2)
+library(plotly)
+
+
+
+ggplot(data1,mapping = aes(x=time,y=cases, color=state))+geom_point()+geom_line()
+
+data3<-data1[which(data1$vaccine>0),]
+ggplot(data3,mapping = aes(x=time,y=vaccine, color=state))+geom_point()+geom_line()
+
+ggplot(data1,mapping = aes(x=time,y=temp, color=state))+geom_point()+geom_line()
+
+library(GGally)
+ggpairs(data2[,2:5])
+
+library(gridExtra)
+
+p1<-ggplot(data2[which(data2$state=='California'),],mapping = aes(x=cases))+geom_histogram()
+p2<-ggplot(data2[which(data2$state=='Florida'),],mapping = aes(x=cases))+geom_histogram()
+p3<-ggplot(data2[which(data2$state=='Illinois'),],mapping = aes(x=cases))+geom_histogram()
+p4<-ggplot(data2[which(data2$state=='Texas'),],mapping = aes(x=cases))+geom_histogram()
+p5<-ggplot(data2[which(data2$state=='Washington'),],mapping = aes(x=cases))+geom_histogram()
+p6<-ggplot(data2[which(data2$state=='New York'),],mapping = aes(x=cases))+geom_histogram()
+grid.arrange(p1, p2,p3,p4,p5,p6,nrow = 2) 
+
+
+
+
+p1<-ggplot(data2,mapping = aes(x=cases))+geom_histogram()
+p2<-ggplot(data2,mapping = aes(x=log(cases)))+geom_histogram()
+grid.arrange(p1,p2,nrow=1)
+
+time_wave<-sin(2*pi*(data2$time-55)/122)
+p1<-ggplot(data2,mapping = aes(x=time,y=log(cases)))+geom_point()+geom_line()
+p2<-ggplot(data2,mapping = aes(x=time,y=time_wave))+geom_point()+geom_line()
+grid.arrange(p1,p2,nrow=2)
+```
+
+### session info
+```{r}
+sessionInfo()
+```
+
